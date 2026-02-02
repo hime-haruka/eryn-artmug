@@ -307,26 +307,17 @@ async function initShowcase() {
 
       <div class="sc-dots" data-sc="dots" aria-label="슬라이드 위치"></div>
     </div>
-
-    <div class="sc-modal" data-sc="modal" aria-hidden="true">
-      <div class="sc-modal-backdrop" data-sc="close"></div>
-      <div class="sc-modal-body" role="dialog" aria-modal="true" aria-label="영상 재생">
-        <button class="sc-modal-close" type="button" data-sc="close" aria-label="닫기">×</button>
-        <div class="sc-modal-player" data-sc="player"></div>
-      </div>
-    </div>
   `;
 
   const rows = await fetchSheetRows(GIDS.showcase);
 
-  // ✅ active가 비어있으면 기본 표시, FALSE면 숨김
+  // ✅ active 비어있으면 기본 표시, FALSE면 숨김
   const items = rows
     .filter((r) => {
       const a = (r.active ?? "").toString().trim();
       return a === "" || truthy(a);
     })
     .map((r) => {
-      // normalizeKey 때문에 order/title/youtube/caption/price/active로 들어옴
       const youtube = (r.youtube || "").trim();
       const vid = getYouTubeId(youtube);
 
@@ -347,10 +338,10 @@ async function initShowcase() {
 
   items.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-  // 디버그: 시트 행/아이템 개수 바로 확인 가능
   console.log("[showcase] rows:", rows.length, "items:", items.length);
 
   renderShowcase(items);
+  applyFxToAllWraps();
 }
 
 function renderShowcase(items) {
@@ -358,11 +349,9 @@ function renderShowcase(items) {
   const dots = document.querySelector('[data-sc="dots"]');
   const prev = document.querySelector(".sc-prev");
   const next = document.querySelector(".sc-next");
-  const modal = document.querySelector('[data-sc="modal"]');
-  const player = document.querySelector('[data-sc="player"]');
   const viewport = document.querySelector("#showcase .sc-viewport");
 
-  if (!track || !dots || !prev || !next || !modal || !player || !viewport) return;
+  if (!track || !dots || !prev || !next || !viewport) return;
 
   if (!items.length) {
     track.innerHTML = `<li class="sc-empty">등록된 쇼케이스가 없습니다.</li>`;
@@ -371,17 +360,21 @@ function renderShowcase(items) {
     return;
   }
 
-  // slides
+  // slides (✅ button → a 로 변경 / 클릭 시 유튜브 새탭 이동)
   track.innerHTML = items
     .map((it, idx) => {
-      const thumb = getYouTubeThumb(it.vid);
+      const ytUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(it.vid)}`;
       const t = it.title ? `<h3 class="sc-item-title">${escapeHtml(it.title)}</h3>` : "";
       const p = it.price ? `<p class="sc-item-price">${escapeHtml(it.price)}</p>` : "";
       const c = it.caption ? `<p class="sc-item-cap">${nl2br(escapeHtml(it.caption))}</p>` : "";
 
       return `
         <li class="sc-item" data-idx="${idx}">
-          <button class="sc-thumb" type="button" data-vid="${escapeHtml(it.vid)}" aria-label="영상 열기">
+          <a class="sc-thumb"
+             href="${ytUrl}"
+             target="_blank"
+             rel="noopener noreferrer"
+             aria-label="유튜브로 이동">
             <img
               src="${getYouTubeThumb(it.vid, 'max')}"
               alt="YouTube thumbnail"
@@ -389,7 +382,7 @@ function renderShowcase(items) {
               onerror="this.onerror=null; this.src='${getYouTubeThumb(it.vid, 'hq')}';"
             />
             <span class="sc-play" aria-hidden="true">▶</span>
-          </button>
+          </a>
           <div class="sc-meta">
             ${t}
             ${p}
@@ -400,7 +393,7 @@ function renderShowcase(items) {
     })
     .join("");
 
-  // ✅ 슬라이드 폭을 viewport 기준 픽셀로 고정 → scrollWidth가 반드시 커짐
+  // ✅ 슬라이드 폭 고정 (scrollWidth 확보)
   syncShowcaseSlideWidths(track, viewport);
 
   // dots
@@ -421,8 +414,6 @@ function renderShowcase(items) {
 
   const scrollToIndex = (idx, behavior = "smooth") => {
     const left = stepPx() * idx;
-
-    // 일부 환경에서 scrollTo가 없거나 object arg가 문제될 수 있어 안전처리
     try {
       viewport.scrollTo({ left, behavior });
     } catch {
@@ -450,24 +441,6 @@ function renderShowcase(items) {
     setActive(toInt(btn.dataset.dot));
   };
 
-  // 썸네일 클릭 → 모달
-  track.onclick = (e) => {
-    const btn = e.target.closest(".sc-thumb");
-    if (!btn) return;
-    openShowcaseModal(modal, player, btn.dataset.vid);
-  };
-
-  // 모달 닫기
-  modal.onclick = (e) => {
-    if (!e.target.closest('[data-sc="close"]')) return;
-    closeShowcaseModal(modal, player);
-  };
-
-  // ESC 닫기
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeShowcaseModal(modal, player);
-  });
-
   // 사용자가 드래그/휠로 스크롤해도 현재 인덱스 유지
   viewport.addEventListener(
     "scroll",
@@ -492,9 +465,6 @@ function renderShowcase(items) {
     }, 150)
   );
 
-  // 최종 체크(원하면 콘솔에서 확인 가능)
-  console.log("[showcase] viewport clientWidth:", viewport.clientWidth, "scrollWidth:", viewport.scrollWidth);
-
   setActive(0, "auto");
 }
 
@@ -507,53 +477,6 @@ function syncShowcaseSlideWidths(track, viewport) {
   });
 }
 
-let YT_PLAYER = null;
-
-function openShowcaseModal(modal, playerWrap, vid) {
-  modal.classList.add("is-open");
-  modal.setAttribute("aria-hidden", "false");
-
-  document.body.classList.add("is-modal-open");
-
-  playerWrap.innerHTML = `<div id="yt-player"></div>`;
-
-  const create = () => {
-    try {
-      YT_PLAYER = new YT.Player("yt-player", {
-        videoId: vid,
-        playerVars: { autoplay: 1, rel: 0, playsinline: 1, vq: "hd1080" },
-        events: {
-          onReady: (e) => {
-            e.target.setPlaybackQuality("hd1080");
-            e.target.playVideo();
-          },
-        },
-      });
-    } catch (err) {
-      console.warn("[YT] player create failed:", err);
-    }
-  };
-
-  if (window.YT && window.YT.Player) create();
-  else window.onYouTubeIframeAPIReady = () => create();
-}
-
-
-function closeShowcaseModal(modal, playerWrap) {
-  if (!modal.classList.contains("is-open")) return;
-
-  modal.classList.remove("is-open");
-  modal.setAttribute("aria-hidden", "true");
-
-  try {
-    if (YT_PLAYER && YT_PLAYER.destroy) YT_PLAYER.destroy();
-  } catch {}
-  YT_PLAYER = null;
-
-  playerWrap.innerHTML = "";
-
-  document.body.classList.remove("is-modal-open");
-}
 
 /******** YouTube helpers ********/
 function getYouTubeId(url) {
@@ -828,7 +751,7 @@ async function initSample() {
   if (!root) return;
 
   root.innerHTML = `
-    <div class="sp-wrap fx-wrap">
+    <div class="sp-wrap">
       <div class="sp-content">
         <header class="sp-head">
           <h2 class="sp-title">리깅 작업 샘플</h2>
