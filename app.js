@@ -1746,3 +1746,40 @@ function formatWon(n) {
   const v = Number(n || 0);
   return v.toLocaleString("ko-KR") + "원";
 }
+
+(function () {
+  function bindGoto() {
+    document.querySelectorAll('a[name="goto"]').forEach(a => {
+      if (a.__gotoBound) return;
+      a.__gotoBound = true;
+
+      a.addEventListener("click", e => {
+        e.preventDefault();
+
+        const targetId = a.getAttribute("href");
+        if (!targetId) return;
+
+        const target =
+          document.getElementById(targetId) ||
+          document.querySelector(`[name="${targetId}"]`);
+
+        if (!target) {
+          console.warn("[goto] target not found:", targetId);
+          return;
+        }
+
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+          inline: "nearest"
+        });
+      });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", bindGoto);
+
+  window.addEventListener("load", bindGoto);
+
+  setTimeout(bindGoto, 800);
+})();
