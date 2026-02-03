@@ -1693,7 +1693,7 @@ function wireEstimateSystem() {
       sns: "작업 과정 공개",
       collab: "협업 작가 유무",
       face_list: "표정 종류",
-      extra_note: "추가 요청 사항"
+      extra: "추가 요청 사항"
     };
 
     const fd = new FormData(form);
@@ -1707,10 +1707,8 @@ function wireEstimateSystem() {
       const vv = (v ?? "").toString().trim();
       if (!vv) continue;
 
-      const label = labelMap[k];
-      if (!label) continue; // 견적용 내부 값 제외
-
-      rows.push(`- ${label}: ${vv}`);
+    const label = labelMap[k] || k;
+    rows.push(`- ${label}: ${vv}`);
     }
 
     // 견적
