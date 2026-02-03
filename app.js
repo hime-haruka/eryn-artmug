@@ -1756,8 +1756,11 @@ function formatWon(n) {
       a.addEventListener("click", e => {
         e.preventDefault();
 
-        const targetId = a.getAttribute("href");
+        let targetId = a.getAttribute("href");
         if (!targetId) return;
+
+        // '#' 제거
+        targetId = targetId.replace(/^#/, "");
 
         const target =
           document.getElementById(targetId) ||
@@ -1778,8 +1781,6 @@ function formatWon(n) {
   }
 
   document.addEventListener("DOMContentLoaded", bindGoto);
-
   window.addEventListener("load", bindGoto);
-
   setTimeout(bindGoto, 800);
 })();
