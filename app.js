@@ -290,8 +290,8 @@ function renderSlot(rows) {
       <ul class="slot-list">${listHtml}</ul>
       <p class="slot-note muted">최근 3개월 일정만 안내드립니다. 이후 일정도 문의 주시면 조율 가능합니다.</p>
       <div class="hero-actions">
-        <a class="hero-btn hero-btn-primary" href="form">문의 작성하러 가기</a>
-        <a class="hero-btn hero-btn-secondary" href="sample">리깅 샘플 보러가기</a>
+        <a class="hero-btn hero-btn-primary" href="form" name="goto">문의 작성하러 가기</a>
+        <a class="hero-btn hero-btn-secondary" href="sample" name="goto">리깅 샘플 보러가기</a>
       </div>
     </div>
   `;
