@@ -41,6 +41,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (c) c.innerHTML = `<p style="padding:16px">협업 작가 데이터를 불러오지 못했습니다.</p>`;
   });
 
+  initPrice().catch((err) => {
+    console.error("[price] init failed:", err);
+    const p = document.querySelector("#price");
+    if (p) p.innerHTML = `<p style="padding:16px">가격표 데이터를 불러오지 못했습니다.</p>`;
+  });
+
 });
 
 /**************************
@@ -879,4 +885,188 @@ function toLh3Url(input) {
   if (/^[a-zA-Z0-9_-]{10,}$/.test(s)) return `https://lh3.googleusercontent.com/d/${s}`;
 
   return s;
+}
+
+
+/**************************
+        Price Renderer
+***************************/
+async function initPrice() {
+  const root = document.querySelector("#price");
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="pr-wrap fx-wrap">
+      <div class="content-wrap">
+
+        <section class="pr-panel pr-basic">
+          <header class="pr-head">
+            <h2 class="pr-title">리깅 기본 옵션</h2>
+          </header>
+
+          <div class="pr-basic-grid">
+            <div class="pr-basic-cards" data-pr="basicCards"></div>
+
+            <div class="pr-basic-list">
+              <h3 class="pr-subtitle">리깅 옵션 목록</h3>
+              <ul class="pr-list" data-pr="includedList"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="pr-panel pr-extra">
+          <header class="pr-head">
+            <h2 class="pr-title">리깅 추가 옵션</h2>
+          </header>
+          <div class="pr-extra-groups" data-pr="extraGroups"></div>
+        </section>
+
+      </div>
+    </div>
+  `;
+
+  const rows = await fetchSheetRows(GIDS.price);
+  renderPrice(rows);
+  applyFxToAllWraps();
+}
+
+function renderPrice(rows) {
+  const basicWrap = document.querySelector('[data-pr="basicCards"]');
+  const listWrap = document.querySelector('[data-pr="includedList"]');
+  const extraWrap = document.querySelector('[data-pr="extraGroups"]');
+  if (!basicWrap || !listWrap || !extraWrap) return;
+
+  const norm = (s) => (s ?? "").toString().trim();
+
+  const basics = rows
+    .filter((r) => norm(r.group) === "basic")
+    .map((r) => ({
+      order: toInt(r.order),
+      title: norm(r.title),
+      price: toInt(r.price),
+      desc: norm(r.desc),
+      calc: norm(r.calc_type),
+    }))
+    .filter((x) => x.title)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const includes = rows
+    .filter((r) => norm(r.group) === "list")
+    .map((r) => ({
+      order: toInt(r.order),
+      title: norm(r.title),
+    }))
+    .filter((x) => x.title)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const extras = rows
+    .filter((r) => norm(r.group) === "extra")
+    .map((r) => ({
+      order: toInt(r.order),
+      category: norm(r.category) || "기타",
+      title: norm(r.title),
+      price: toInt(r.price),
+      desc: norm(r.desc),
+      calc: norm(r.calc_type),
+    }))
+    .filter((x) => x.title)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  // ---------- basic cards ----------
+  if (!basics.length) {
+    basicWrap.innerHTML = `<p class="muted" style="padding:6px;">기본 옵션이 없습니다.</p>`;
+  } else {
+    basicWrap.innerHTML = basics
+      .map((it) => {
+        const priceText = formatWon(it.price);
+        const descHtml = it.desc ? renderMultilineParagraphs(it.desc, "pr-desc") : "";
+        const tag = it.calc ? `<span class="pr-pill">${escapeHtml(it.calc)}</span>` : "";
+
+        return `
+          <article class="pr-card">
+            <div class="pr-card-top">
+              <h3 class="pr-card-title">${escapeHtml(it.title)}</h3>
+              <div class="pr-card-meta">
+                <span class="pr-price">${escapeHtml(priceText)}</span>
+                ${tag}
+              </div>
+            </div>
+            ${descHtml}
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  // ---------- included list ----------
+  if (!includes.length) {
+    listWrap.innerHTML = `<li class="muted">포함 옵션이 없습니다.</li>`;
+  } else {
+    listWrap.innerHTML = includes
+      .map((it) => `<li class="pr-li">${escapeHtml(it.title)}</li>`)
+      .join("");
+  }
+
+  // ---------- extra grouped by category ----------
+  if (!extras.length) {
+    extraWrap.innerHTML = `<p class="muted" style="padding:6px;">추가 옵션이 없습니다.</p>`;
+  } else {
+    const map = new Map();
+    for (const it of extras) {
+      if (!map.has(it.category)) map.set(it.category, []);
+      map.get(it.category).push(it);
+    }
+
+    const categories = [...map.entries()];
+
+    extraWrap.innerHTML = categories
+      .map(([cat, items]) => {
+        const cards = items
+          .map((it) => {
+            const priceText = formatWon(it.price);
+            const tag = it.calc ? `<span class="pr-pill">${escapeHtml(it.calc)}</span>` : "";
+            const descHtml = it.desc ? `<div class="pr-mini-desc">${nl2br(escapeHtml(it.desc))}</div>` : "";
+
+            return `
+              <div class="pr-mini">
+                <div class="pr-mini-top">
+                  <div class="pr-mini-title">${escapeHtml(it.title)}</div>
+                  <div class="pr-mini-meta">
+                    <span class="pr-mini-price">${escapeHtml(priceText)}</span>
+                    ${tag}
+                  </div>
+                </div>
+                ${descHtml}
+              </div>
+            `;
+          })
+          .join("");
+
+        return `
+          <section class="pr-group">
+            <h3 class="pr-group-title">${escapeHtml(cat)}</h3>
+            <div class="pr-mini-grid">
+              ${cards}
+            </div>
+          </section>
+        `;
+      })
+      .join("");
+  }
+}
+
+function formatWon(n) {
+  const v = Number.isFinite(n) ? n : toInt(n);
+  if (!v) return "0원";
+  try {
+    return v.toLocaleString("ko-KR") + "원";
+  } catch {
+    return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "원";
+  }
+}
+
+function renderMultilineParagraphs(text, cls) {
+  const lines = (text || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) return "";
+  return `<div class="${escapeHtml(cls)}">` + lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("") + `</div>`;
 }
