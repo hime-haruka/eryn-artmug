@@ -254,8 +254,8 @@ function renderSlot(rows) {
       <div class="card-body">
         <p class="muted">등록된 슬롯 정보가 없습니다.</p>
         <div class="hero-actions">
-          <a name="goto" class="hero-btn hero-btn-primary" href="form">문의 작성하러 가기</a>
-          <a name="goto" class="hero-btn hero-btn-secondary" href="sample">리깅 샘플 보러가기</a>
+          <a class="hero-btn hero-btn-primary" href="#form">문의 작성하러 가기</a>
+          <a class="hero-btn hero-btn-secondary" href="#sample">리깅 샘플 보러가기</a>
         </div>
       </div>
     `;
@@ -290,8 +290,8 @@ function renderSlot(rows) {
       <ul class="slot-list">${listHtml}</ul>
       <p class="slot-note muted">최근 3개월 일정만 안내드립니다. 이후 일정도 문의 주시면 조율 가능합니다.</p>
       <div class="hero-actions">
-        <a class="hero-btn hero-btn-primary" href="form" name="goto">문의 작성하러 가기</a>
-        <a class="hero-btn hero-btn-secondary" href="sample" name="goto">리깅 샘플 보러가기</a>
+          <a class="hero-btn hero-btn-primary" href="#form">문의 작성하러 가기</a>
+          <a class="hero-btn hero-btn-secondary" href="#sample">리깅 샘플 보러가기</a>
       </div>
     </div>
   `;
@@ -1748,38 +1748,21 @@ function formatWon(n) {
 }
 
 (function () {
-  function bindGoto() {
-    document.querySelectorAll('a[name="goto"]').forEach(a => {
-      if (a.__gotoBound) return;
-      a.__gotoBound = true;
+  document.addEventListener("click", function (e) {
+    const a = e.target.closest('a[href^="#"]');
+    if (!a) return;
 
-      a.addEventListener("click", e => {
-        e.preventDefault();
+    const id = a.getAttribute("href").slice(1);
+    if (!id) return;
 
-        const targetId = a.getAttribute("href");
-        if (!targetId) return;
+    const target = document.getElementById(id);
+    if (!target) return;
 
-        const target =
-          document.getElementById(targetId) ||
-          document.querySelector(`[name="${targetId}"]`);
+    e.preventDefault();
 
-        if (!target) {
-          console.warn("[goto] target not found:", targetId);
-          return;
-        }
-
-        target.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-          inline: "nearest"
-        });
-      });
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
     });
-  }
-
-  document.addEventListener("DOMContentLoaded", bindGoto);
-
-  window.addEventListener("load", bindGoto);
-
-  setTimeout(bindGoto, 800);
+  });
 })();
