@@ -47,6 +47,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (p) p.innerHTML = `<p style="padding:16px">가격표 데이터를 불러오지 못했습니다.</p>`;
   });
 
+  initNotice().catch(console.error);
+
+  initForm().catch((err) => {
+  console.error("[form] init failed:", err);
+  const f = document.querySelector("#form");
+  if (f) f.innerHTML = `<p style="padding:16px">문의 폼 데이터를 불러오지 못했습니다.</p>`;
+});
+
 });
 
 /**************************
@@ -1074,3 +1082,617 @@ function renderMultilineParagraphs(text, cls) {
 
 
 
+/**************************
+        Notice Renderer
+***************************/
+async function initNotice() {
+  const root = document.querySelector("#notice");
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="nt-wrap fx-wrap">
+      <div class="content-wrap">
+
+        <!-- 시트 데이터 카드 -->
+        <section class="nt-panel">
+          <header class="nt-head">
+            <h2 class="nt-title">공지사항</h2>
+            <p class="nt-desc">의뢰 전 아래 내용을 꼭 확인해주세요.</p>
+          </header>
+
+          <div class="nt-groups" data-nt="groups"></div>
+        </section>
+
+        <!-- 작업 과정 (고정 HTML) -->
+        <section class="nt-panel nt-process">
+          <header class="nt-head">
+            <h2 class="nt-title">작업 과정</h2>
+          </header>
+
+          <ul class="nt-process-note" data-nt="processNote"></ul>
+
+          <ol class="nt-steps">
+            <li><b>문의</b> · 문의 양식 제출</li>
+            <li><b>안내 및 입금</b> · 견적 안내 및 입금 진행</li>
+            <li><b>얼굴 리깅</b> · 눈 / 입 / 표정</li>
+            <li><b>머리 리깅</b> · 머리 XYZ + 머리/머리카락 물리 연산</li>
+            <li><b>1차 컨펌</b> · 수정 사항 반영</li>
+            <li><b>몸 리깅</b> · 몸 XYZ + 몸/의상 물리 연산</li>
+            <li><b>2차 컨펌</b> · 수정 사항 반영</li>
+            <li><b>작업 완성</b> · 작업 전달 및 세팅 안내</li>
+          </ol>
+        </section>
+
+      </div>
+    </div>
+  `;
+
+  const rows = await fetchSheetRows(GIDS.notice);
+  renderNotice(rows);
+  applyFxToAllWraps();
+}
+
+function renderNotice(rows) {
+  const wrap = document.querySelector('[data-nt="groups"]');
+  const processNoteEl = document.querySelector('[data-nt="processNote"]');
+  if (!wrap) return;
+
+  if (!rows.length) {
+    wrap.innerHTML = `<p class="muted">등록된 공지사항이 없습니다.</p>`;
+    if (processNoteEl) processNoteEl.style.display = "none";
+    return;
+  }
+
+  const processGroupName = "작업 과정";
+
+  const map = new Map();
+  rows.forEach((r) => {
+    const group = (r.group || "").trim();
+    if (!group) return;
+
+    if (!map.has(group)) map.set(group, []);
+    map.get(group).push({
+      order: toInt(r.order),
+      content: (r.content || "").trim(),
+    });
+  });
+
+  const processItems = (map.get(processGroupName) || [])
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .filter((it) => it.content);
+
+  if (processNoteEl) {
+    if (!processItems.length) {
+      processNoteEl.style.display = "none";
+    } else {
+      processNoteEl.style.display = "";
+      processNoteEl.innerHTML = processItems
+        .map((it) => `<li>${escapeHtml(it.content)}</li>`)
+        .join("");
+    }
+  }
+
+  const groups = [...map.entries()]
+    .filter(([groupName]) => groupName !== processGroupName)
+    .map(([groupName, items]) => {
+      const sorted = items.slice().sort((a, b) => a.order - b.order);
+      const minOrder = Math.min(...sorted.map((x) => x.order || 0));
+      return { groupName, items: sorted, minOrder };
+    })
+    .sort((a, b) => (a.minOrder || 0) - (b.minOrder || 0));
+
+  wrap.innerHTML = groups
+    .map((g, idx) => {
+      const id = `nt-acc-${idx}`;
+      const list = g.items
+        .filter((it) => it.content)
+        .map((it) => `<li>${escapeHtml(it.content)}</li>`)
+        .join("");
+
+      const open = false;
+
+      return `
+        <article class="nt-acc" data-acc>
+          <button class="nt-acc-btn"
+                  type="button"
+                  data-acc-btn
+                  aria-expanded="${open ? "true" : "false"}"
+                  aria-controls="${id}">
+            <h3 class="nt-acc-title">${escapeHtml(g.groupName)}</h3>
+            <span class="nt-acc-ico" aria-hidden="true">▼</span>
+          </button>
+
+          <div class="nt-acc-body"
+               id="${id}"
+               data-acc-body
+               aria-hidden="${open ? "false" : "true"}">
+            <div class="nt-acc-inner">
+              <ul class="nt-acc-list">
+                ${list}
+              </ul>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  initNoticeAccordions(wrap);
+}
+
+function initNoticeAccordions(container) {
+  if (!container) return;
+
+  container.querySelectorAll("[data-acc]").forEach((acc) => {
+    const btn = acc.querySelector("[data-acc-btn]");
+    const body = acc.querySelector("[data-acc-body]");
+    if (!btn || !body) return;
+
+    if (btn.getAttribute("aria-expanded") === "true") {
+      setAccordionOpen(body, true, false);
+    } else {
+      setAccordionOpen(body, false, false);
+    }
+  });
+
+  container.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-acc-btn]");
+    if (!btn || !container.contains(btn)) return;
+
+    const acc = btn.closest("[data-acc]");
+    const body = acc?.querySelector("[data-acc-body]");
+    if (!acc || !body) return;
+
+    const isOpen = btn.getAttribute("aria-expanded") === "true";
+
+    btn.setAttribute("aria-expanded", String(!isOpen));
+    body.setAttribute("aria-hidden", String(isOpen));
+
+    setAccordionOpen(body, !isOpen, true);
+  });
+
+  window.addEventListener(
+    "resize",
+    debounce(() => {
+      container.querySelectorAll("[data-acc]").forEach((acc) => {
+        const btn = acc.querySelector("[data-acc-btn]");
+        const body = acc.querySelector("[data-acc-body]");
+        if (!btn || !body) return;
+        if (btn.getAttribute("aria-expanded") === "true") {
+          setAccordionOpen(body, true, false);
+        }
+      });
+    }, 120)
+  );
+}
+
+function closeOtherAccordions(container, exceptAcc) {
+  container.querySelectorAll("[data-acc]").forEach((acc) => {
+    if (acc === exceptAcc) return;
+    const btn = acc.querySelector("[data-acc-btn]");
+    const body = acc.querySelector("[data-acc-body]");
+    if (!btn || !body) return;
+    if (btn.getAttribute("aria-expanded") === "true") {
+      btn.setAttribute("aria-expanded", "false");
+      body.setAttribute("aria-hidden", "true");
+      setAccordionOpen(body, false, true);
+    }
+  });
+}
+
+/**
+ * open/close with height animation
+**/
+function setAccordionOpen(bodyEl, open, animate = true) {
+  const inner = bodyEl.querySelector(".nt-acc-inner");
+  if (!inner) return;
+  if (!animate) bodyEl.style.transition = "none";
+
+  const current = bodyEl.getBoundingClientRect().height;
+  const target = inner.scrollHeight;
+
+  if (open) {
+    bodyEl.style.height = current + "px";
+
+    bodyEl.offsetHeight;
+
+    if (animate) bodyEl.style.transition = "";
+    bodyEl.style.height = target + "px";
+
+    const onEnd = (e) => {
+      if (e.propertyName !== "height") return;
+      bodyEl.style.height = "auto";
+      bodyEl.removeEventListener("transitionend", onEnd);
+    };
+    bodyEl.addEventListener("transitionend", onEnd);
+
+  } else {
+    bodyEl.style.height = current + "px";
+    bodyEl.offsetHeight;
+
+    if (animate) bodyEl.style.transition = "";
+    bodyEl.style.height = "0px";
+  }
+
+  if (!animate) {
+    bodyEl.offsetHeight;
+    bodyEl.style.transition = "";
+    if (open) bodyEl.style.height = "auto";
+  }
+}
+
+
+
+
+/**************************
+      Form
+***************************/
+async function initForm() {
+  const root = document.querySelector("#form");
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="fm-wrap fx-wrap">
+      <div class="content-wrap">
+        <section class="fm-panel">
+          <header class="fm-head">
+            <h2 class="fm-title">문의 양식</h2>
+            <p class="fm-desc">아래 양식을 작성해주시면 확인 후 안내드릴게요.</p>
+          </header>
+
+          <form class="fm-grid" data-fm="form" autocomplete="off"></form>
+        </section>
+
+        <section class="fm-panel fm-est" data-fm="estPanel">
+          <header class="fm-head">
+            <h2 class="fm-title">예상 견적 계산기</h2>
+            <p class="fm-desc">선택한 옵션 기준으로 예상 견적을 계산합니다. (참고용)</p>
+          </header>
+
+          <div class="fm-est-grid">
+            <div class="fm-est-options" data-fm="estOptions"></div>
+
+            <div class="fm-est-sum">
+              <div class="fm-sum-row">
+                <span class="fm-sum-label">예상 견적</span>
+                <input class="fm-sum-input" data-fm="estTotal" type="text" value="0원" readonly />
+              </div>
+
+              <input type="hidden" name="estimated_total" data-fm="estTotalHidden" value="0" />
+              <input type="hidden" name="estimated_items" data-fm="estItemsHidden" value="" />
+
+              <p class="fm-sum-note">※ 실제 견적은 도안 상태/요청 범위에 따라 달라질 수 있어요.</p>
+
+              <button class="fm-copy" type="button" data-fm="copyBtn">선택 옵션/견적 복사</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="fm-submit-row">
+          <button class="fm-submit" type="submit">문의 내용 정리하기</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const [formRows, priceRows] = await Promise.all([
+    fetchSheetRows(GIDS.form),
+    fetchSheetRows(GIDS.price),
+  ]);
+
+  renderFormFields(formRows);
+  renderEstimator(priceRows);
+
+  wireFormSubmitToSummary();
+
+  applyFxToAllWraps();
+}
+
+function renderFormFields(rows) {
+  const form = document.querySelector('[data-fm="form"]');
+  if (!form) return;
+
+  const items = rows
+    .map((r) => ({
+      order: toInt(r.order),
+      key: (r.key || "").trim(),
+      label: (r.label || "").trim(),
+      type: (r.type || "").trim().toLowerCase(),
+      options: (r.options || "").trim(),
+      placeholder: (r.placeholder || "").trim(),
+    }))
+    .filter((x) => x.key && x.label)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  form.innerHTML = items.map(buildField).join("");
+}
+
+function buildField(it) {
+  const key = escapeHtml(it.key);
+  const label = escapeHtml(it.label);
+  const ph = escapeHtml(it.placeholder || "");
+  const type = (it.type || "text").toLowerCase();
+
+  const head = `
+    <div class="fm-item">
+      <label class="fm-label" for="fm-${key}">${label}</label>
+  `;
+
+  const tail = `</div>`;
+
+  if (type === "textarea") {
+    return (
+      head +
+      `<textarea class="fm-control" id="fm-${key}" name="${key}" placeholder="${ph}"></textarea>` +
+      tail
+    );
+  }
+
+  if (type === "select") {
+    const opts = (it.options || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const optHtml = opts.length
+      ? opts.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")
+      : `<option value="">선택</option>`;
+
+    return head + `<select class="fm-control" id="fm-${key}" name="${key}">${optHtml}</select>` + tail;
+  }
+
+  if (type === "radio") {
+    const opts = (it.options || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const radios = opts
+      .map((o, idx) => {
+        const v = escapeHtml(o);
+        const rid = `fm-${key}-${idx}`;
+        return `
+          <label class="fm-choice" for="${rid}">
+            <input id="${rid}" type="radio" name="${key}" value="${v}">
+            <span>${v}</span>
+          </label>
+        `;
+      })
+      .join("");
+
+    return head + `<div class="fm-choices" id="fm-${key}">${radios}</div>` + tail;
+  }
+
+  // date / text default
+  const inputType = type === "date" ? "date" : "text";
+  return head + `<input class="fm-control" id="fm-${key}" name="${key}" type="${inputType}" placeholder="${ph}">` + tail;
+}
+
+/**************************
+        Estimator
+***************************/
+function renderEstimator(priceRows) {
+  const wrap = document.querySelector('[data-fm="estOptions"]');
+  if (!wrap) return;
+
+  const norm = (s) => (s ?? "").toString().trim();
+
+  const basics = priceRows
+    .filter((r) => norm(r.group) === "basic")
+    .map((r) => ({
+      order: toInt(r.order),
+      title: norm(r.title),
+      price: toInt(r.price),
+      desc: norm(r.desc),
+      calc: norm(r.calc_type),
+    }))
+    .filter((x) => x.title && x.price > 0)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const extras = priceRows
+    .filter((r) => norm(r.group) === "extra")
+    .map((r) => ({
+      order: toInt(r.order),
+      category: norm(r.category) || "기타",
+      title: norm(r.title),
+      price: toInt(r.price),
+      desc: norm(r.desc),
+      calc: norm(r.calc_type),
+    }))
+    .filter((x) => x.title && x.price > 0)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  const baseCandidates = basics.filter((b) => !!b.calc);
+  const basicChecks = basics.filter((b) => !b.calc);
+
+  const baseHtml = baseCandidates.length
+    ? `
+      <section class="fm-est-block">
+        <h3 class="fm-est-title">기본 옵션 (택1)</h3>
+        <div class="fm-est-list">
+          ${baseCandidates
+            .map((it, idx) => {
+              const id = `est-base-${idx}`;
+              return `
+                <label class="fm-est-item" for="${id}">
+                  <input id="${id}" type="radio" name="est_base" data-est="base"
+                         data-title="${escapeHtml(it.title)}" data-price="${it.price}">
+                  <span class="fm-est-name">${escapeHtml(it.title)}</span>
+                  <span class="fm-est-price">${escapeHtml(formatWon(it.price))}</span>
+                </label>
+              `;
+            })
+            .join("")}
+        </div>
+      </section>
+    `
+    : "";
+
+  const basicHtml = basicChecks.length
+    ? `
+      <section class="fm-est-block">
+        <h3 class="fm-est-title">기본 옵션 (추가 선택)</h3>
+        <div class="fm-est-list">
+          ${basicChecks
+            .map((it, idx) => {
+              const id = `est-basic-${idx}`;
+              return `
+                <label class="fm-est-item" for="${id}">
+                  <input id="${id}" type="checkbox" data-est="opt"
+                         data-title="${escapeHtml(it.title)}" data-price="${it.price}">
+                  <span class="fm-est-name">${escapeHtml(it.title)}</span>
+                  <span class="fm-est-price">${escapeHtml(formatWon(it.price))}</span>
+                </label>
+              `;
+            })
+            .join("")}
+        </div>
+      </section>
+    `
+    : "";
+
+  const extraHtml = extras.length ? renderExtrasByCategory(extras) : "";
+
+  wrap.innerHTML = baseHtml + basicHtml + extraHtml;
+
+  wireEstimatorEvents();
+  updateEstimatorTotal();
+}
+
+function renderExtrasByCategory(extras) {
+  const map = new Map();
+  for (const it of extras) {
+    if (!map.has(it.category)) map.set(it.category, []);
+    map.get(it.category).push(it);
+  }
+
+  const cats = [...map.entries()]
+    .map(([category, arr]) => {
+      const minOrder = Math.min(...arr.map((x) => (x.order ? x.order : 999999)));
+      return { category, minOrder, arr };
+    })
+    .sort((a, b) => (a.minOrder || 0) - (b.minOrder || 0) || a.category.localeCompare(b.category));
+
+  return cats
+    .map((g, gi) => {
+      const list = g.arr
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((it, idx) => {
+          const id = `est-extra-${gi}-${idx}`;
+          return `
+            <label class="fm-est-item" for="${id}">
+              <input id="${id}" type="checkbox" data-est="opt"
+                     data-title="${escapeHtml(it.title)}" data-price="${it.price}">
+              <span class="fm-est-name">${escapeHtml(it.title)}</span>
+              <span class="fm-est-price">${escapeHtml(formatWon(it.price))}</span>
+            </label>
+          `;
+        })
+        .join("");
+
+      return `
+        <section class="fm-est-block">
+          <h3 class="fm-est-title">${escapeHtml(g.category)}</h3>
+          <div class="fm-est-list">${list}</div>
+        </section>
+      `;
+    })
+    .join("");
+}
+
+function wireEstimatorEvents() {
+  const panel = document.querySelector('[data-fm="estPanel"]');
+  if (!panel) return;
+
+  panel.addEventListener("change", (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement)) return;
+    if (!t.dataset.est) return;
+    updateEstimatorTotal();
+  });
+
+  const copyBtn = document.querySelector('[data-fm="copyBtn"]');
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async () => {
+      const payload = buildEstimatorCopyText();
+      try {
+        await navigator.clipboard.writeText(payload);
+        copyBtn.textContent = "복사 완료!";
+        setTimeout(() => (copyBtn.textContent = "선택 옵션/견적 복사"), 1200);
+      } catch {
+        alert(payload);
+      }
+    });
+  }
+}
+
+function updateEstimatorTotal() {
+  const totalEl = document.querySelector('[data-fm="estTotal"]');
+  const hiddenTotal = document.querySelector('[data-fm="estTotalHidden"]');
+  const hiddenItems = document.querySelector('[data-fm="estItemsHidden"]');
+  if (!totalEl || !hiddenTotal || !hiddenItems) return;
+
+  let total = 0;
+  const picked = [];
+
+  // base (radio)
+  const base = document.querySelector('input[name="est_base"]:checked');
+  if (base) {
+    const p = toInt(base.dataset.price);
+    total += p;
+    picked.push(`${base.dataset.title} (${formatWon(p)})`);
+  }
+
+  // checkboxes
+  document.querySelectorAll('input[type="checkbox"][data-est="opt"]:checked').forEach((cb) => {
+    const p = toInt(cb.dataset.price);
+    total += p;
+    picked.push(`${cb.dataset.title} (${formatWon(p)})`);
+  });
+
+  totalEl.value = formatWon(total);
+  hiddenTotal.value = String(total);
+  hiddenItems.value = picked.join(" / ");
+}
+
+function buildEstimatorCopyText() {
+  const total = document.querySelector('[data-fm="estTotal"]')?.value || "0원";
+  const items = document.querySelector('[data-fm="estItemsHidden"]')?.value || "";
+  const lines = [
+    `[예상 견적] ${total}`,
+    items ? `[선택 옵션] ${items}` : `[선택 옵션] (선택 없음)`,
+  ];
+  return lines.join("\n");
+}
+
+function wireFormSubmitToSummary() {
+  const form = document.querySelector('[data-fm="form"]');
+  if (!form) return;
+
+  form.addEventListener("submit", (e) => e.preventDefault());
+
+  const submitBtn = document.querySelector(".fm-submit");
+  if (!submitBtn) return;
+
+  submitBtn.addEventListener("click", async () => {
+    const fd = new FormData(form);
+    const rows = [];
+    for (const [k, v] of fd.entries()) {
+      const vv = (v ?? "").toString().trim();
+      if (!vv) continue;
+      rows.push(`${k}: ${vv}`);
+    }
+
+    rows.push(buildEstimatorCopyText());
+
+    const text = rows.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      submitBtn.textContent = "문의 내용 복사 완료!";
+      setTimeout(() => (submitBtn.textContent = "문의 내용 정리하기"), 1400);
+    } catch {
+      alert(text);
+    }
+  });
+}
