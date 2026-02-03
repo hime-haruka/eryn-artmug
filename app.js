@@ -254,8 +254,8 @@ function renderSlot(rows) {
       <div class="card-body">
         <p class="muted">등록된 슬롯 정보가 없습니다.</p>
         <div class="hero-actions">
-          <a class="hero-btn hero-btn-primary" href="#form">문의 작성하러 가기</a>
-          <a class="hero-btn hero-btn-secondary" href="#sample">리깅 샘플 보러가기</a>
+          <a name="goto" class="hero-btn hero-btn-primary" href="#form">문의 작성하러 가기</a>
+          <a name="goto" class="hero-btn hero-btn-secondary" href="#sample">리깅 샘플 보러가기</a>
         </div>
       </div>
     `;
