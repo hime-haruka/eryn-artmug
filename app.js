@@ -254,8 +254,8 @@ function renderSlot(rows) {
       <div class="card-body">
         <p class="muted">등록된 슬롯 정보가 없습니다.</p>
         <div class="hero-actions">
-          <a name="goto" class="hero-btn hero-btn-primary" href="#form">문의 작성하러 가기</a>
-          <a name="goto" class="hero-btn hero-btn-secondary" href="#sample">리깅 샘플 보러가기</a>
+          <a name="goto" class="hero-btn hero-btn-primary" href="form">문의 작성하러 가기</a>
+          <a name="goto" class="hero-btn hero-btn-secondary" href="sample">리깅 샘플 보러가기</a>
         </div>
       </div>
     `;
@@ -1756,11 +1756,8 @@ function formatWon(n) {
       a.addEventListener("click", e => {
         e.preventDefault();
 
-        let targetId = a.getAttribute("href");
+        const targetId = a.getAttribute("href");
         if (!targetId) return;
-
-        // '#' 제거
-        targetId = targetId.replace(/^#/, "");
 
         const target =
           document.getElementById(targetId) ||
@@ -1781,6 +1778,8 @@ function formatWon(n) {
   }
 
   document.addEventListener("DOMContentLoaded", bindGoto);
+
   window.addEventListener("load", bindGoto);
+
   setTimeout(bindGoto, 800);
 })();
