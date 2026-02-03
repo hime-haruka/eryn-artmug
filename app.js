@@ -1325,8 +1325,11 @@ function setAccordionOpen(bodyEl, open, animate = true) {
 
 
 
+
 /**************************
-      Form
+   Unified Form (price-driven)
+   - basic(리깅 옵션) 상단으로 이동 + 2칸(span 2)
+   - extra(추가 옵션) 아래 섹션 유지
 ***************************/
 async function initForm() {
   const root = document.querySelector("#form");
@@ -1335,43 +1338,36 @@ async function initForm() {
   root.innerHTML = `
     <div class="fm-wrap fx-wrap">
       <div class="content-wrap">
+
         <section class="fm-panel">
           <header class="fm-head">
-            <h2 class="fm-title">문의 양식</h2>
-            <p class="fm-desc">아래 양식을 작성해주시면 확인 후 안내드릴게요.</p>
+            <h2 class="fm-title">리깅 신청 양식</h2>
+            <p class="fm-desc">옵션/금액은 변동될 수 있으며, 아래 예상 견적은 참고용입니다.</p>
           </header>
 
-          <form class="fm-grid" data-fm="form" autocomplete="off"></form>
-        </section>
+          <form class="fm-all" data-fm="form" autocomplete="off">
+            <div class="fm-top" data-fm="top"></div>
 
-        <section class="fm-panel fm-est" data-fm="estPanel">
-          <header class="fm-head">
-            <h2 class="fm-title">예상 견적 계산기</h2>
-            <p class="fm-desc">선택한 옵션 기준으로 예상 견적을 계산합니다. (참고용)</p>
-          </header>
+            <!-- 추가 옵션(카테고리별) -->
+            <div class="fm-price" data-fm="price"></div>
 
-          <div class="fm-est-grid">
-            <div class="fm-est-options" data-fm="estOptions"></div>
+            <div class="fm-bottom" data-fm="bottom"></div>
 
-            <div class="fm-est-sum">
-              <div class="fm-sum-row">
-                <span class="fm-sum-label">예상 견적</span>
-                <input class="fm-sum-input" data-fm="estTotal" type="text" value="0원" readonly />
+            <div class="fm-est" data-fm="est">
+              <div class="fm-est-head">
+                <span class="fm-est-title">예상 견적</span>
+                <span class="fm-est-total" data-fm="totalText">0원</span>
               </div>
+              <div class="fm-est-desc" data-fm="breakdown"></div>
 
-              <input type="hidden" name="estimated_total" data-fm="estTotalHidden" value="0" />
-              <input type="hidden" name="estimated_items" data-fm="estItemsHidden" value="" />
-
-              <p class="fm-sum-note">※ 실제 견적은 도안 상태/요청 범위에 따라 달라질 수 있어요.</p>
-
-              <button class="fm-copy" type="button" data-fm="copyBtn">선택 옵션/견적 복사</button>
+              <div class="fm-est-actions">
+                <button type="button" class="fm-btn" data-fm="copy">양식 복사</button>
+                <button type="button" class="fm-btn" data-fm="reset">초기화</button>
+              </div>
             </div>
-          </div>
+          </form>
         </section>
 
-        <div class="fm-submit-row">
-          <button class="fm-submit" type="submit">문의 내용 정리하기</button>
-        </div>
       </div>
     </div>
   `;
@@ -1381,318 +1377,374 @@ async function initForm() {
     fetchSheetRows(GIDS.price),
   ]);
 
-  renderFormFields(formRows);
-  renderEstimator(priceRows);
-
-  wireFormSubmitToSummary();
+  renderPlainFormFields(formRows);       // 상단/하단 입력 필드
+  renderPriceDrivenOptions(priceRows);   // 리깅옵션(상단 baseSlot) + 추가옵션(아래)
+  wireEstimateSystem();                  // 합산/복사/초기화
 
   applyFxToAllWraps();
 }
 
-function renderFormFields(rows) {
-  const form = document.querySelector('[data-fm="form"]');
-  if (!form) return;
+/***************
+  (A) 입력 필드 렌더 (form 시트)
+  - 상단: text/select/radio/date 중심
+  - 하단: textarea 중심(전체폭)
+  - 상단 끝에 baseSlot(리깅 옵션) 자리 자동 추가
+****************/
+function renderPlainFormFields(rows) {
+  const top = document.querySelector('[data-fm="top"]');
+  const bottom = document.querySelector('[data-fm="bottom"]');
+  if (!top || !bottom) return;
 
   const items = rows
     .map((r) => ({
       order: toInt(r.order),
       key: (r.key || "").trim(),
       label: (r.label || "").trim(),
-      type: (r.type || "").trim().toLowerCase(),
+      type: (r.type || "text").trim().toLowerCase(),
       options: (r.options || "").trim(),
       placeholder: (r.placeholder || "").trim(),
     }))
     .filter((x) => x.key && x.label)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-  form.innerHTML = items.map(buildField).join("");
+  const topHtml = [];
+  const bottomHtml = [];
+
+  for (const it of items) {
+    const html = buildPlainField(it);
+    if (it.type === "textarea") bottomHtml.push(html);
+    else topHtml.push(html);
+  }
+
+  // ✅ 중요한 부분: baseSlot을 top에 "항상" 붙여둔다 (여기서 2칸 span 처리)
+  top.innerHTML =
+    topHtml.join("") +
+    `<div class="fm-top-slot" data-fm="baseSlot"></div>`;
+
+  bottom.innerHTML = bottomHtml.join("");
 }
 
-function buildField(it) {
+function buildPlainField(it) {
   const key = escapeHtml(it.key);
   const label = escapeHtml(it.label);
   const ph = escapeHtml(it.placeholder || "");
   const type = (it.type || "text").toLowerCase();
 
-  const head = `
-    <div class="fm-item">
-      <label class="fm-label" for="fm-${key}">${label}</label>
-  `;
-
+  const head = `<div class="fm-item"><label class="fm-label" for="fm-${key}">${label}</label>`;
   const tail = `</div>`;
 
   if (type === "textarea") {
-    return (
-      head +
-      `<textarea class="fm-control" id="fm-${key}" name="${key}" placeholder="${ph}"></textarea>` +
-      tail
-    );
+    return head + `<textarea class="fm-control" id="fm-${key}" name="${key}" placeholder="${ph}"></textarea>` + tail;
   }
 
   if (type === "select") {
-    const opts = (it.options || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const optHtml = opts.length
-      ? opts.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")
-      : `<option value="">선택</option>`;
-
+    const opts = it.options.split(",").map(s => s.trim()).filter(Boolean);
+    const optHtml = opts.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
     return head + `<select class="fm-control" id="fm-${key}" name="${key}">${optHtml}</select>` + tail;
   }
 
   if (type === "radio") {
-    const opts = (it.options || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const radios = opts
-      .map((o, idx) => {
-        const v = escapeHtml(o);
-        const rid = `fm-${key}-${idx}`;
-        return `
-          <label class="fm-choice" for="${rid}">
-            <input id="${rid}" type="radio" name="${key}" value="${v}">
-            <span>${v}</span>
-          </label>
-        `;
-      })
-      .join("");
-
+    const opts = it.options.split(",").map(s => s.trim()).filter(Boolean);
+    const radios = opts.map((o, idx) => {
+      const id = `fm-${key}-${idx}`;
+      const v = escapeHtml(o);
+      return `
+        <label class="fm-choice" for="${id}">
+          <input id="${id}" type="radio" name="${key}" value="${v}">
+          <span>${v}</span>
+        </label>
+      `;
+    }).join("");
     return head + `<div class="fm-choices" id="fm-${key}">${radios}</div>` + tail;
   }
 
-  // date / text default
   const inputType = type === "date" ? "date" : "text";
   return head + `<input class="fm-control" id="fm-${key}" name="${key}" type="${inputType}" placeholder="${ph}">` + tail;
 }
 
-/**************************
-        Estimator
-***************************/
-function renderEstimator(priceRows) {
-  const wrap = document.querySelector('[data-fm="estOptions"]');
+/***************
+  (B) 옵션 + 견적 UI 렌더 (price 시트만 사용)
+  - group=basic  -> baseSlot에 "리깅 옵션" 택1 라디오로 렌더
+  - group=extra  -> 아래 "추가 옵션" 1번 헤더 + category 별 섹션
+****************/
+function renderPriceDrivenOptions(priceRows) {
+  const wrap = document.querySelector('[data-fm="price"]');
+  const baseSlot = document.querySelector('[data-fm="baseSlot"]');
   if (!wrap) return;
 
   const norm = (s) => (s ?? "").toString().trim();
 
+  // basic -> 택1
   const basics = priceRows
-    .filter((r) => norm(r.group) === "basic")
-    .map((r) => ({
+    .filter(r => norm(r.group) === "basic")
+    .map(r => ({
       order: toInt(r.order),
       title: norm(r.title),
       price: toInt(r.price),
       desc: norm(r.desc),
-      calc: norm(r.calc_type),
     }))
-    .filter((x) => x.title && x.price > 0)
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
+    .filter(x => x.title && x.price > 0)
+    .sort((a,b) => (a.order||0)-(b.order||0));
 
+  const baseHtml = basics.length ? `
+    <section class="fm-block fm-block--base">
+      <h3 class="fm-block-title">리깅 옵션</h3>
+      <div class="fm-base">
+        ${basics.map((it, idx) => {
+          const id = `est-base-${idx}`;
+          return `
+            <label class="fm-opt" for="${id}">
+              <input id="${id}" type="radio" name="est_base"
+                data-est="base" data-title="${escapeHtml(it.title)}" data-price="${it.price}">
+              <span class="fm-opt-name">${escapeHtml(it.title)}</span>
+              <span class="fm-opt-price">${escapeHtml(formatWon(it.price))}</span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  ` : "";
+
+  // ✅ baseHtml은 상단 baseSlot에 넣기
+  if (baseSlot) baseSlot.innerHTML = baseHtml;
+
+  // extra -> category + calc_type
   const extras = priceRows
-    .filter((r) => norm(r.group) === "extra")
-    .map((r) => ({
+    .filter(r => norm(r.group) === "extra")
+    .map(r => ({
       order: toInt(r.order),
       category: norm(r.category) || "기타",
       title: norm(r.title),
       price: toInt(r.price),
       desc: norm(r.desc),
-      calc: norm(r.calc_type),
+      calc: norm(r.calc_type).toLowerCase(), // add / unit
     }))
-    .filter((x) => x.title && x.price > 0)
-    .sort((a, b) => (a.order || 0) - (b.order || 0));
+    .filter(x => x.title && x.price > 0)
+    .sort((a,b) => (a.order||0)-(b.order||0));
 
-  const baseCandidates = basics.filter((b) => !!b.calc);
-  const basicChecks = basics.filter((b) => !b.calc);
-
-  const baseHtml = baseCandidates.length
-    ? `
-      <section class="fm-est-block">
-        <h3 class="fm-est-title">기본 옵션 (택1)</h3>
-        <div class="fm-est-list">
-          ${baseCandidates
-            .map((it, idx) => {
-              const id = `est-base-${idx}`;
-              return `
-                <label class="fm-est-item" for="${id}">
-                  <input id="${id}" type="radio" name="est_base" data-est="base"
-                         data-title="${escapeHtml(it.title)}" data-price="${it.price}">
-                  <span class="fm-est-name">${escapeHtml(it.title)}</span>
-                  <span class="fm-est-price">${escapeHtml(formatWon(it.price))}</span>
-                </label>
-              `;
-            })
-            .join("")}
-        </div>
-      </section>
-    `
-    : "";
-
-  const basicHtml = basicChecks.length
-    ? `
-      <section class="fm-est-block">
-        <h3 class="fm-est-title">기본 옵션 (추가 선택)</h3>
-        <div class="fm-est-list">
-          ${basicChecks
-            .map((it, idx) => {
-              const id = `est-basic-${idx}`;
-              return `
-                <label class="fm-est-item" for="${id}">
-                  <input id="${id}" type="checkbox" data-est="opt"
-                         data-title="${escapeHtml(it.title)}" data-price="${it.price}">
-                  <span class="fm-est-name">${escapeHtml(it.title)}</span>
-                  <span class="fm-est-price">${escapeHtml(formatWon(it.price))}</span>
-                </label>
-              `;
-            })
-            .join("")}
-        </div>
-      </section>
-    `
-    : "";
-
-  const extraHtml = extras.length ? renderExtrasByCategory(extras) : "";
-
-  wrap.innerHTML = baseHtml + basicHtml + extraHtml;
-
-  wireEstimatorEvents();
-  updateEstimatorTotal();
-}
-
-function renderExtrasByCategory(extras) {
-  const map = new Map();
-  for (const it of extras) {
-    if (!map.has(it.category)) map.set(it.category, []);
-    map.get(it.category).push(it);
+  if (!extras.length) {
+    wrap.innerHTML = "";
+    return;
   }
 
-  const cats = [...map.entries()]
-    .map(([category, arr]) => {
+  // category별 그룹핑
+  const byCat = new Map();
+  for (const it of extras) {
+    if (!byCat.has(it.category)) byCat.set(it.category, []);
+    byCat.get(it.category).push(it);
+  }
+
+  // 카테고리 정렬: 각 카테고리 내 최소 order 기준
+  const catList = [...byCat.entries()]
+    .map(([cat, arr]) => {
       const minOrder = Math.min(...arr.map((x) => (x.order ? x.order : 999999)));
-      return { category, minOrder, arr };
+      return { cat, minOrder, arr };
     })
-    .sort((a, b) => (a.minOrder || 0) - (b.minOrder || 0) || a.category.localeCompare(b.category));
+    .sort((a, b) => (a.minOrder || 0) - (b.minOrder || 0) || a.cat.localeCompare(b.cat));
 
-  return cats
-    .map((g, gi) => {
-      const list = g.arr
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .map((it, idx) => {
-          const id = `est-extra-${gi}-${idx}`;
-          return `
-            <label class="fm-est-item" for="${id}">
-              <input id="${id}" type="checkbox" data-est="opt"
-                     data-title="${escapeHtml(it.title)}" data-price="${it.price}">
-              <span class="fm-est-name">${escapeHtml(it.title)}</span>
-              <span class="fm-est-price">${escapeHtml(formatWon(it.price))}</span>
-            </label>
-          `;
-        })
-        .join("");
+  const catBlocksHtml = catList.map(({ cat, arr }) => {
+    const units = arr.filter(x => x.calc === "unit");
+    const adds  = arr.filter(x => x.calc === "add");
 
-      return `
-        <section class="fm-est-block">
-          <h3 class="fm-est-title">${escapeHtml(g.category)}</h3>
-          <div class="fm-est-list">${list}</div>
-        </section>
-      `;
-    })
-    .join("");
+    const unitHtml = units.length ? `
+      <div class="fm-sub">
+        <div class="fm-sub-title">${escapeHtml(cat)}</div>
+        <div class="fm-unit-row">
+          ${units.map((it, idx) => {
+            const id = `est-unit-${escapeHtml(cat)}-${idx}`;
+            return `
+              <div class="fm-unit">
+                <label class="fm-unit-label" for="${id}">
+                  ${escapeHtml(it.title)}
+                  <span class="fm-unit-price">개당 ${escapeHtml(formatWon(it.price))}</span>
+                </label>
+                <select id="${id}" class="fm-control fm-unit-select"
+                  data-est="unit" data-title="${escapeHtml(it.title)}" data-unitprice="${it.price}">
+                  ${[...Array(11)].map((_,n)=>`<option value="${n}">${n}개</option>`).join("")}
+                </select>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    ` : "";
+
+    const addHtml = adds.length ? `
+      <div class="fm-sub">
+        <div class="fm-sub-title">${escapeHtml(cat)}</div>
+        <div class="fm-check-grid">
+          ${adds.map((it, idx) => {
+            const id = `est-add-${escapeHtml(cat)}-${idx}`;
+            return `
+              <label class="fm-opt" for="${id}">
+                <input id="${id}" type="checkbox"
+                  data-est="add" data-title="${escapeHtml(it.title)}" data-price="${it.price}">
+                <span class="fm-opt-name">${escapeHtml(it.title)}</span>
+                <span class="fm-opt-price">+ ${escapeHtml(formatWon(it.price))}</span>
+              </label>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    ` : "";
+
+    return unitHtml + addHtml;
+  }).join("");
+
+  // ✅ “추가 옵션” 헤더는 딱 한 번만
+  const extraHtml = `
+    <section class="fm-block fm-block--extra">
+      <h3 class="fm-block-title">추가 옵션</h3>
+      ${catBlocksHtml}
+    </section>
+  `;
+
+  wrap.innerHTML = extraHtml;
 }
 
-function wireEstimatorEvents() {
-  const panel = document.querySelector('[data-fm="estPanel"]');
-  if (!panel) return;
+/***************
+  (C) 합산/브레이크다운/복사/초기화
+****************/
+function wireEstimateSystem() {
+  const form = document.querySelector('[data-fm="form"]');
+  const copyBtn = document.querySelector('[data-fm="copy"]');
+  const resetBtn = document.querySelector('[data-fm="reset"]');
+  if (!form) return;
 
-  panel.addEventListener("change", (e) => {
+  const recalc = () => {
+    let total = 0;
+    const lines = [];
+
+    const base = document.querySelector('input[name="est_base"]:checked');
+    if (base) {
+      const p = toInt(base.dataset.price);
+      total += p;
+      lines.push(`${base.dataset.title} (${formatWon(p)})`);
+    }
+
+    document.querySelectorAll('input[type="checkbox"][data-est="add"]:checked').forEach(cb => {
+      const p = toInt(cb.dataset.price);
+      total += p;
+      lines.push(`${cb.dataset.title} (${formatWon(p)})`);
+    });
+
+    document.querySelectorAll('select[data-est="unit"]').forEach(sel => {
+      const n = toInt(sel.value);
+      if (!n) return;
+      const up = toInt(sel.dataset.unitprice);
+      const p = n * up;
+      total += p;
+      lines.push(`${sel.dataset.title} x${n} (${formatWon(p)})`);
+    });
+
+    const totalText = document.querySelector('[data-fm="totalText"]');
+    const breakdown = document.querySelector('[data-fm="breakdown"]');
+
+    if (totalText) totalText.textContent = formatWon(total);
+
+    if (breakdown) {
+      // ✅ inline 한 줄 표기 ( + 로 연결 )
+      breakdown.textContent = lines.length
+        ? lines.join(" + ")
+        : "선택된 옵션이 없습니다.";
+
+      breakdown.classList.toggle("muted", !lines.length);
+    }
+  };
+
+  form.addEventListener("change", (e) => {
     const t = e.target;
-    if (!(t instanceof HTMLInputElement)) return;
-    if (!t.dataset.est) return;
-    updateEstimatorTotal();
+    if (!t) return;
+    if (
+      t.matches('input[name="est_base"]') ||
+      t.matches('input[data-est="add"]') ||
+      t.matches('select[data-est="unit"]')
+    ) recalc();
   });
 
-  const copyBtn = document.querySelector('[data-fm="copyBtn"]');
   if (copyBtn) {
     copyBtn.addEventListener("click", async () => {
-      const payload = buildEstimatorCopyText();
+      const txt = buildCopyText();
       try {
-        await navigator.clipboard.writeText(payload);
+        await navigator.clipboard.writeText(txt);
         copyBtn.textContent = "복사 완료!";
-        setTimeout(() => (copyBtn.textContent = "선택 옵션/견적 복사"), 1200);
+        setTimeout(() => (copyBtn.textContent = "양식 복사"), 1200);
       } catch {
-        alert(payload);
+        alert(txt);
       }
     });
   }
-}
 
-function updateEstimatorTotal() {
-  const totalEl = document.querySelector('[data-fm="estTotal"]');
-  const hiddenTotal = document.querySelector('[data-fm="estTotalHidden"]');
-  const hiddenItems = document.querySelector('[data-fm="estItemsHidden"]');
-  if (!totalEl || !hiddenTotal || !hiddenItems) return;
-
-  let total = 0;
-  const picked = [];
-
-  // base (radio)
-  const base = document.querySelector('input[name="est_base"]:checked');
-  if (base) {
-    const p = toInt(base.dataset.price);
-    total += p;
-    picked.push(`${base.dataset.title} (${formatWon(p)})`);
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      form.reset();
+      document.querySelectorAll('select[data-est="unit"]').forEach(sel => sel.value = "0");
+      recalc();
+    });
   }
 
-  // checkboxes
-  document.querySelectorAll('input[type="checkbox"][data-est="opt"]:checked').forEach((cb) => {
-    const p = toInt(cb.dataset.price);
-    total += p;
-    picked.push(`${cb.dataset.title} (${formatWon(p)})`);
-  });
+  function buildCopyText() {
+    const labelMap = {
+      nickname: "닉네임",
+      platform: "플랫폼",
+      tracking: "트래킹 장비",
+      deadline: "마감일",
+      illustrator: "일러스트레이터",
+      sns: "작업 과정 공개",
+      collab: "협업 작가 유무",
+      face_list: "표정 종류",
+      extra_note: "추가 요청 사항"
+    };
 
-  totalEl.value = formatWon(total);
-  hiddenTotal.value = String(total);
-  hiddenItems.value = picked.join(" / ");
-}
-
-function buildEstimatorCopyText() {
-  const total = document.querySelector('[data-fm="estTotal"]')?.value || "0원";
-  const items = document.querySelector('[data-fm="estItemsHidden"]')?.value || "";
-  const lines = [
-    `[예상 견적] ${total}`,
-    items ? `[선택 옵션] ${items}` : `[선택 옵션] (선택 없음)`,
-  ];
-  return lines.join("\n");
-}
-
-function wireFormSubmitToSummary() {
-  const form = document.querySelector('[data-fm="form"]');
-  if (!form) return;
-
-  form.addEventListener("submit", (e) => e.preventDefault());
-
-  const submitBtn = document.querySelector(".fm-submit");
-  if (!submitBtn) return;
-
-  submitBtn.addEventListener("click", async () => {
     const fd = new FormData(form);
+
     const rows = [];
+    rows.push("📩 리깅 신청서");
+    rows.push("━━━━━━━━━━━━━━━━");
+
+    // 기본 입력 항목
     for (const [k, v] of fd.entries()) {
       const vv = (v ?? "").toString().trim();
       if (!vv) continue;
-      rows.push(`${k}: ${vv}`);
+
+      const label = labelMap[k];
+      if (!label) continue; // 견적용 내부 값 제외
+
+      rows.push(`- ${label}: ${vv}`);
     }
 
-    rows.push(buildEstimatorCopyText());
+    // 견적
+    const total = document.querySelector('[data-fm="totalText"]')?.textContent || "0원";
 
-    const text = rows.join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      submitBtn.textContent = "문의 내용 복사 완료!";
-      setTimeout(() => (submitBtn.textContent = "문의 내용 정리하기"), 1400);
-    } catch {
-      alert(text);
+    const picked = [];
+    const base = document.querySelector('input[name="est_base"]:checked');
+    if (base) picked.push(base.dataset.title);
+
+    document.querySelectorAll('input[type="checkbox"][data-est="add"]:checked')
+      .forEach(cb => picked.push(cb.dataset.title));
+
+    document.querySelectorAll('select[data-est="unit"]')
+      .forEach(sel => {
+        const n = toInt(sel.value);
+        if (n) picked.push(`${sel.dataset.title} x${n}`);
+      });
+
+    rows.push("");
+    rows.push("💰 예상 견적");
+    rows.push(`- 총 금액: ${total}`);
+
+    if (picked.length) {
+      rows.push(`- 선택 옵션: ${picked.join(" + ")}`);
     }
-  });
+
+    return rows.join("\n");
+  }
+
+
+  recalc();
+}
+
+function formatWon(n) {
+  const v = Number(n || 0);
+  return v.toLocaleString("ko-KR") + "원";
 }
