@@ -1704,6 +1704,7 @@ function wireEstimateSystem() {
 
     // 기본 입력 항목
     for (const [k, v] of fd.entries()) {
+      if (k.startsWith("est_")) continue;
       const vv = (v ?? "").toString().trim();
       if (!vv) continue;
 
