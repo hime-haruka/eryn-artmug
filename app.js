@@ -76,7 +76,6 @@ function csvToObjects(csvText) {
   const rows = parseCsv(csvText);
   if (!rows.length) return [];
 
-  // 헤더 공백/대소문자 흔들려도 안전하게 처리
   const headers = rows[0].map((h) => normalizeKey(h));
   const body = rows.slice(1);
 
@@ -137,7 +136,7 @@ function normalizeKey(k) {
     .toString()
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, ""); // " youtube " 같은 헤더 흔들림 방지
+    .replace(/\s+/g, "");
 }
 
 /**************************
@@ -325,7 +324,6 @@ async function initShowcase() {
 
   const rows = await fetchSheetRows(GIDS.showcase);
 
-  // ✅ active 비어있으면 기본 표시, FALSE면 숨김
   const items = rows
     .filter((r) => {
       const a = (r.active ?? "").toString().trim();
@@ -374,7 +372,6 @@ function renderShowcase(items) {
     return;
   }
 
-  // slides (✅ button → a 로 변경 / 클릭 시 유튜브 새탭 이동)
   track.innerHTML = items
     .map((it, idx) => {
       const ytUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(it.vid)}`;
@@ -407,10 +404,8 @@ function renderShowcase(items) {
     })
     .join("");
 
-  // ✅ 슬라이드 폭 고정 (scrollWidth 확보)
   syncShowcaseSlideWidths(track, viewport);
 
-  // dots
   dots.innerHTML = items
     .map((_, i) => `<button type="button" class="sc-dot" data-dot="${i}" aria-label="${i + 1}번 슬라이드"></button>`)
     .join("");
@@ -455,7 +450,6 @@ function renderShowcase(items) {
     setActive(toInt(btn.dataset.dot));
   };
 
-  // 사용자가 드래그/휠로 스크롤해도 현재 인덱스 유지
   viewport.addEventListener(
     "scroll",
     debounce(() => {
@@ -470,7 +464,6 @@ function renderShowcase(items) {
     }, 80)
   );
 
-  // resize: 폭 재동기화 + 위치 유지
   window.addEventListener(
     "resize",
     debounce(() => {
@@ -1328,8 +1321,6 @@ function setAccordionOpen(bodyEl, open, animate = true) {
 
 /**************************
    Unified Form (price-driven)
-   - basic(리깅 옵션) 상단으로 이동 + 2칸(span 2)
-   - extra(추가 옵션) 아래 섹션 유지
 ***************************/
 async function initForm() {
   const root = document.querySelector("#form");
@@ -1377,18 +1368,15 @@ async function initForm() {
     fetchSheetRows(GIDS.price),
   ]);
 
-  renderPlainFormFields(formRows);       // 상단/하단 입력 필드
-  renderPriceDrivenOptions(priceRows);   // 리깅옵션(상단 baseSlot) + 추가옵션(아래)
-  wireEstimateSystem();                  // 합산/복사/초기화
+  renderPlainFormFields(formRows);
+  renderPriceDrivenOptions(priceRows);
+  wireEstimateSystem();
 
   applyFxToAllWraps();
 }
 
 /***************
-  (A) 입력 필드 렌더 (form 시트)
-  - 상단: text/select/radio/date 중심
-  - 하단: textarea 중심(전체폭)
-  - 상단 끝에 baseSlot(리깅 옵션) 자리 자동 추가
+  (A) 입력 필드 렌더
 ****************/
 function renderPlainFormFields(rows) {
   const top = document.querySelector('[data-fm="top"]');
@@ -1416,7 +1404,6 @@ function renderPlainFormFields(rows) {
     else topHtml.push(html);
   }
 
-  // ✅ 중요한 부분: baseSlot을 top에 "항상" 붙여둔다 (여기서 2칸 span 처리)
   top.innerHTML =
     topHtml.join("") +
     `<div class="fm-top-slot" data-fm="baseSlot"></div>`;
@@ -1463,9 +1450,7 @@ function buildPlainField(it) {
 }
 
 /***************
-  (B) 옵션 + 견적 UI 렌더 (price 시트만 사용)
-  - group=basic  -> baseSlot에 "리깅 옵션" 택1 라디오로 렌더
-  - group=extra  -> 아래 "추가 옵션" 1번 헤더 + category 별 섹션
+  (B) 옵션 견적 렌더
 ****************/
 function renderPriceDrivenOptions(priceRows) {
   const wrap = document.querySelector('[data-fm="price"]');
@@ -1505,10 +1490,8 @@ function renderPriceDrivenOptions(priceRows) {
     </section>
   ` : "";
 
-  // ✅ baseHtml은 상단 baseSlot에 넣기
   if (baseSlot) baseSlot.innerHTML = baseHtml;
 
-  // extra -> category + calc_type
   const extras = priceRows
     .filter(r => norm(r.group) === "extra")
     .map(r => ({
@@ -1527,14 +1510,14 @@ function renderPriceDrivenOptions(priceRows) {
     return;
   }
 
-  // category별 그룹핑
+  // category 그룹핑
   const byCat = new Map();
   for (const it of extras) {
     if (!byCat.has(it.category)) byCat.set(it.category, []);
     byCat.get(it.category).push(it);
   }
 
-  // 카테고리 정렬: 각 카테고리 내 최소 order 기준
+  // 카테고리 정렬
   const catList = [...byCat.entries()]
     .map(([cat, arr]) => {
       const minOrder = Math.min(...arr.map((x) => (x.order ? x.order : 999999)));
@@ -1591,7 +1574,6 @@ function renderPriceDrivenOptions(priceRows) {
     return unitHtml + addHtml;
   }).join("");
 
-  // ✅ “추가 옵션” 헤더는 딱 한 번만
   const extraHtml = `
     <section class="fm-block fm-block--extra">
       <h3 class="fm-block-title">추가 옵션</h3>
@@ -1603,7 +1585,7 @@ function renderPriceDrivenOptions(priceRows) {
 }
 
 /***************
-  (C) 합산/브레이크다운/복사/초기화
+  (C) 합산/양식복사
 ****************/
 function wireEstimateSystem() {
   const form = document.querySelector('[data-fm="form"]');
@@ -1643,7 +1625,6 @@ function wireEstimateSystem() {
     if (totalText) totalText.textContent = formatWon(total);
 
     if (breakdown) {
-      // ✅ inline 한 줄 표기 ( + 로 연결 )
       breakdown.textContent = lines.length
         ? lines.join(" + ")
         : "선택된 옵션이 없습니다.";
