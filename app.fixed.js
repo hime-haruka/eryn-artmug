@@ -1512,11 +1512,10 @@ async function initForm() {
   APP_STATE.activeDiscounts = getActiveEventDiscounts(eventRows);
 
   renderPlainFormFields(formRows);
+  renderCollabAssistField(APP_STATE.collabItems);
   renderPriceDrivenOptions(priceRows);
   renderDiscountOptions(APP_STATE.activeDiscounts);
   wireEstimateSystem();
-
-  applyFxToAllWraps();
 }
 
 /***********************
